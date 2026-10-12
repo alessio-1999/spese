@@ -33,7 +33,13 @@
 }
 *,*::before,*::after{box-sizing:inherit}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
-html,body{margin:0;min-height:100%}
+html,body{margin:0;min-height:100%;overflow-x:hidden;overscroll-behavior-x:none}
+body{width:100%;position:relative}
+input,select,textarea{min-width:0;max-width:100%}
+input[type=date],input[type=month]{-webkit-appearance:none;appearance:none;display:block;width:100%;min-height:46px;text-align:left}
+input[type=date]::-webkit-date-and-time-value,input[type=month]::-webkit-date-and-time-value{text-align:left}
+.fields>.field,.chips,.catrow,.row .n,.mov .t{min-width:0}
+.sheet{overflow-x:hidden;overscroll-behavior:contain}
 body{
   background:var(--bg); color:var(--ink);
   font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;
