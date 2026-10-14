@@ -341,15 +341,20 @@ function calc(k){
     else {canali[c]=reg(c);modo[c]='reg'}
   });
   const rimborsi = sum(x=>x.tipo==='rimborso');
-  const any = mv.length>0 || Object.values(modo).includes('saldo');
-  const vere = any ? Object.values(canali).reduce((a,v)=>a+v,0)-rimborsi : null;
+  // mese chiuso = tutti i saldi di chiusura inseriti (e quelli del mese precedente presenti)
+  const chiuso = SALDO.every(c=>modo[c]==='saldo');
+  const registrate = CONTI.reduce((a,{k:c})=>a+reg(c),0) - rimborsi;
+  const vere = chiuso ? Object.values(canali).reduce((a,v)=>a+v,0)-rimborsi : null;
+  const totale = chiuso ? vere : ((mv.length>0||isNum(m.stipendio)) ? registrate : null);
+  const nonReg = chiuso ? vere-registrate : null;
+  const curSet = SALDO.filter(c=>isNum(cur[c])), prevMissing = SALDO.filter(c=>!isNum(prev[c]));
   const perCat={};
   mv.filter(x=>x.tipo==='spesa').forEach(x=>{const c=x.cat||'_';perCat[c]=(perCat[c]||0)+x.importo});
   const vizi = Object.entries(perCat).reduce((a,[c,v])=>a+(catById(c)?.vizio?v:0),0);
   const mancanti = SALDO.filter(c=>modo[c]!=='saldo');
   const entrate = sum(x=>x.tipo==='entrata');
-  const avanzo = ((isNum(m.stipendio)||entrate>0)&&isNum(vere)) ? stip+entrate-vere : null;
-  return {m,prev,cur,canali,modo,inflow,outT,reg,rimborsi,entrate,vere,vizi,perCat,mancanti,avanzo};
+  const avanzo = ((isNum(m.stipendio)||entrate>0)&&isNum(totale)) ? stip+entrate-totale : null;
+  return {m,prev,cur,canali,modo,inflow,outT,reg,rimborsi,entrate,vere,vizi,perCat,mancanti,avanzo,chiuso,registrate,totale,nonReg,curSet,prevMissing};
 }
 
 /* ---------- render ---------- */
@@ -374,28 +379,40 @@ const inVal = v=>S.hide ? `value="${isNum(v)?'••••':''}" placeholder="�
 function viewMese(){
   const st=settings(), r=calc(S.cur), m=r.m;
   let h='';
-  if(!st.start) h+=`<div class="setup"><p>Per calcolare le spese servono i saldi di partenza: il mese da cui inizi e i saldi alla fine del mese prima.</p><button data-act="settings">Imposta il punto di partenza</button></div>`;
+  if(!st.start) h+=`<div class="setup"><p>Per iniziare imposta il mese da cui parti e i saldi di partenza, cioè quelli di chiusura del mese prima.</p><button data-act="settings">Imposta il punto di partenza</button></div>`;
+  // promemoria: chiudere il mese precedente
+  const pk=addM(S.cur,-1);
+  if(st.start && S.cur===periodOf(today()) && pk>=st.start && !calc(pk).chiuso)
+    h+=`<div class="setup"><p>${esc(cap(mLabel(pk)))} non è ancora chiuso. Inserisci i suoi saldi di chiusura per avere le spese definitive.</p><button data-go="${pk}">Chiudi ${esc(mLabel(pk))}</button></div>`;
 
   // hero
-  const sti=m.stipendio, vere=r.vere;
+  const sti=m.stipendio, tot=r.totale;
   let meter='';
-  if(isNum(vere)){
-    const base = isNum(sti)&&sti>0 ? Math.max(sti,vere) : Math.max(vere,1);
+  if(isNum(tot)){
+    const base = isNum(sti)&&sti>0 ? Math.max(sti,tot) : Math.max(tot,1);
     const pv = Math.max(0,Math.min(100, r.vizi/base*100));
-    const ps = Math.max(0,Math.min(100-pv, (vere-r.vizi)/base*100));
+    const ps = Math.max(0,Math.min(100-pv, (tot-r.vizi)/base*100));
     meter=`<div class="meter" role="img" aria-label="Spese rispetto allo stipendio"><i class="v" style="width:${pv}%"></i><i class="s" style="width:${ps}%"></i></div>`;
   }
-  const pct = isNum(vere)&&vere>0 ? ' ('+Math.round(r.vizi/vere*100)+'%)' : '';
+  const pct = isNum(tot)&&tot>0 ? ' ('+Math.round(r.vizi/tot*100)+'%)' : '';
+  let notes='';
+  if(r.chiuso){
+    if(Math.abs(r.nonReg)<0.5) notes+=`<div class="note">Mese chiuso: tutte le spese risultano registrate.</div>`;
+    else if(r.nonReg>0) notes+=`<div class="note">Mese chiuso. Di cui non registrate: <b>${eur(r.nonReg)}</b>, senza categoria.</div>`;
+    else notes+=`<div class="note" style="color:var(--neg)">Hai registrato ${eur(-r.nonReg)} in più di quanto risulta dai saldi: controlla trasferimenti, entrate o saldi.</div>`;
+    if(!isNum(m.stipendio)) notes+=`<div class="note">Inserisci lo stipendio: senza, le spese di Intesa risultano più basse del reale.</div>`;
+  }else if(st.start){
+    notes+=`<div class="note">Mese in corso: il totale è la somma delle spese registrate. Quello definitivo arriva alla chiusura, con i saldi.</div>`;
+  }
   h+=`<div class="hero">
-    <div class="lbl">Spese vere e proprie</div>
-    <div class="big ${isNum(vere)?'':'na'}">${eur(vere)}</div>
+    <div class="lbl">${r.chiuso?'Spese vere e proprie':'Spese registrate finora'}</div>
+    <div class="big ${isNum(tot)?'':'na'}">${eur(tot)}</div>
     ${meter}
     <div class="legend">
       <div><span class="k"><span class="dot" style="background:var(--vizi)"></span>di cui vizi</span><b>${eur(r.vizi)}${pct}</b></div>
-      <div style="text-align:right"><span class="k" style="justify-content:flex-end">${isNum(r.avanzo)&&r.avanzo<0?'Mese in rosso di':'Avanzo del mese'}</span><b class="${isNum(r.avanzo)&&r.avanzo<0?'a neg':''}">${isNum(r.avanzo)?eur(Math.abs(r.avanzo)):'—'}</b></div>
+      <div style="text-align:right"><span class="k" style="justify-content:flex-end">${isNum(r.avanzo)&&r.avanzo<0?'Mese in rosso di':(r.chiuso?'Avanzo del mese':'Avanzo finora')}</span><b class="${isNum(r.avanzo)&&r.avanzo<0?'a neg':''}">${isNum(r.avanzo)?eur(Math.abs(r.avanzo)):'—'}</b></div>
     </div>
-    ${r.mancanti.length&&st.start?`<div class="note">Mancano i saldi di ${r.mancanti.map(c=>CNAME[c]).join(', ')}: per ${r.mancanti.length>1?'questi conti':'questo conto'} conto solo le spese registrate.</div>`:''}
-    ${r.modo.ISP==='saldo'&&!isNum(m.stipendio)?`<div class="note">Inserisci lo stipendio: senza, le spese di Intesa risultano più basse del reale.</div>`:''}
+    ${notes}
   </div>`;
 
   // bilancio
@@ -403,33 +420,39 @@ function viewMese(){
     h+=`<section class="blk"><h2>Bilancio del mese</h2>
       <div class="row"><span class="n">Stipendio</span><span class="a ${isNum(m.stipendio)?'':'na'}">${isNum(m.stipendio)?eur(m.stipendio):'non inserito'}</span></div>
       ${r.entrate?`<div class="row"><span class="n"><span>Entrate extra<span class="sub">soldi regalati, compleanni, occasioni</span></span></span><span class="a pos">+${eur(r.entrate)}</span></div>`:''}
-      <div class="row"><span class="n">Spese vere e proprie</span><span class="a">${r.vere>0.004?'−':r.vere<-0.004?'+':''}${eur(Math.abs(r.vere))}</span></div>
-      <div class="row tot"><span class="n"><b>${r.avanzo<0?'In rosso':'Avanzo'}</b></span><span class="a ${r.avanzo<0?'neg':'pos'}">${eur(r.avanzo)}</span></div>
+      <div class="row"><span class="n">${r.chiuso?'Spese vere e proprie':'Spese registrate finora'}</span><span class="a">${tot>0.004?'−':tot<-0.004?'+':''}${eur(Math.abs(tot))}</span></div>
+      <div class="row tot"><span class="n"><b>${r.avanzo<0?'In rosso':(r.chiuso?'Avanzo':'Avanzo finora')}</b></span><span class="a ${r.avanzo<0?'neg':'pos'}">${eur(r.avanzo)}</span></div>
     </section>`;
   }
 
-  // stipendio e saldi
-  h+=`<section class="blk"><h2>Stipendio e saldi attuali</h2><div class="fields">
-    <div class="field"><label for="f-stip">Stipendio</label><input id="f-stip" inputmode="decimal" data-k="stipendio" ${inVal(m.stipendio)}></div>
+  // stipendio
+  h+=`<section class="blk"><h2>Stipendio</h2><div class="fields">
+    <div class="field"><label for="f-stip">Importo</label><input id="f-stip" inputmode="decimal" data-k="stipendio" ${inVal(m.stipendio)}></div>
     <div class="field"><label for="f-ini">Il mese inizia il</label><input id="f-ini" type="date" value="${pStart(S.cur)}" min="${S.cur}-01" max="${S.cur}-${pad(new Date(+S.cur.slice(0,4),+S.cur.slice(5,7),0).getDate())}"><div class="hint">giorno dello stipendio</div></div>
-    ${SALDO.map(c=>`<div class="field"><label for="f-${c}">${c==='C'?'Contanti rimasti':'Saldo '+CNAME[c]}</label><input id="f-${c}" inputmode="decimal" data-k="${c}" ${inVal(r.cur[c])}><div class="hint">mese scorso ${eur(r.prev[c])}</div></div>`).join('')}
   </div></section>`;
 
-  // spese per canale
-  const rowA=(n,v,sub)=>{
-    const warn = isNum(v)&&v<-0.004 ? '<span class="sub" style="color:var(--neg)">Negativo: forse manca da registrare un trasferimento in arrivo, un rimborso o un\'entrata</span>' : '';
-    return `<div class="row"><span class="n"><span>${n}${sub?`<span class="sub">${sub}</span>`:''}${warn}</span></span><span class="a ${isNum(v)?'':'na'}">${isNum(v)?eur(v):'manca il saldo'}</span></div>`;
+  // spese per conto
+  const rowA=(n,v,sub,warnOk)=>{
+    const warn = warnOk&&isNum(v)&&v<-0.004 ? '<span class="sub" style="color:var(--neg)">Negativo: forse manca da registrare un trasferimento in arrivo, un rimborso o un\'entrata</span>' : '';
+    return `<div class="row"><span class="n"><span>${n}${sub?`<span class="sub">${sub}</span>`:''}${warn}</span></span><span class="a">${eur(v)}</span></div>`;
   };
-  const rowsC = CONTI.filter(({k:c})=> c!=='CB' || r.canali.CB || r.inflow('CB') || r.outT('CB')).map(({k:c,n})=>{
-    const sub = r.modo[c]==='saldo'
-      ? 'arrivati '+eur(r.inflow(c))+' · trasferiti fuori '+eur(r.outT(c))
-      : (SALDO.includes(c)?'manca il saldo: solo spese registrate':'spese registrate voce per voce');
-    return rowA(n, r.canali[c], sub);
-  }).join('');
-  h+=`<section class="blk"><h2>Spese per canale</h2>
+  let rowsC;
+  if(r.chiuso){
+    rowsC = CONTI.filter(({k:c})=> c!=='CB' || r.canali.CB || r.inflow('CB') || r.outT('CB')).map(({k:c,n})=>{
+      const sub = r.modo[c]==='saldo'
+        ? 'arrivati '+eur(r.inflow(c))+' · trasferiti fuori '+eur(r.outT(c))+'<br>registrate '+eur(r.reg(c))
+        : 'spese registrate voce per voce';
+      return rowA(n, r.canali[c], sub, r.modo[c]==='saldo');
+    }).join('');
+  }else{
+    const used = CONTI.filter(({k:c})=>r.reg(c)>0);
+    rowsC = used.length ? used.map(({k:c,n})=>rowA(n, r.reg(c), '', false)).join('')
+                        : '<div class="note" style="margin:0 0 6px">Nessuna spesa registrata in questo mese.</div>';
+  }
+  h+=`<section class="blk"><h2>${r.chiuso?'Spese per conto (dai saldi)':'Spese registrate per conto'}</h2>
     ${rowsC}
     ${r.rimborsi?`<div class="row"><span class="n"><span>Rimborsi ricevuti<span class="sub">su qualsiasi conto, si sottraggono</span></span></span><span class="a pos">−${eur(r.rimborsi)}</span></div>`:''}
-    <div class="row tot"><span class="n"><b>Totale</b></span><span class="a">${eur(r.vere)}</span></div>
+    <div class="row tot"><span class="n"><b>Totale</b></span><span class="a">${eur(tot)}</span></div>
   </section>`;
 
   // per categoria
@@ -437,9 +460,22 @@ function viewMese(){
   h+=`<section class="blk"><h2>Per categoria</h2>${entries.length?entries.map(([c,v])=>{
       const ct=catById(c);
       return `<div class="row"><span class="n"><span class="dot" style="background:${ct?.vizio?'var(--vizi)':'var(--line)'}"></span>${esc(ct?ct.nome:'Senza categoria')}</span><span class="a">${eur(v)}</span></div>`;
-    }).join(''):'<div class="note" style="margin:0">Le spese registrate con una categoria compaiono qui. Il pallino arancio indica i vizi.</div>'}</section>`;
+    }).join(''):'<div class="note" style="margin:0">Le spese registrate con una categoria compaiono qui. Il pallino arancio indica i vizi.</div>'}
+    ${r.chiuso&&r.nonReg>0.5?`<div class="row"><span class="n"><span class="dot" style="background:var(--line)"></span>Non registrate</span><span class="a">${eur(r.nonReg)}</span></div>`:''}</section>`;
+
+  // chiusura del mese
+  const manc = SALDO.filter(c=>!isNum(r.cur[c]));
+  h+=`<section class="blk"><h2>${r.chiuso?'Saldi di chiusura · mese chiuso':'Chiusura del mese'}</h2>
+    <div class="note" style="margin:0 0 10px">Da compilare quando arriva il nuovo stipendio, con i saldi del giorno prima. Per Intesa usa il saldo prima dell'accredito. Diventano in automatico i saldi di partenza del mese dopo.</div>
+    ${r.prevMissing.length&&st.start?`<div class="note" style="margin:0 0 10px;color:var(--neg)">Prima chiudi il mese precedente: mancano i suoi saldi di ${r.prevMissing.map(c=>CNAME[c]).join(', ')}.</div>`:''}
+    <div class="fields">
+    ${SALDO.map(c=>`<div class="field"><label for="f-${c}">${c==='C'?'Contanti':CNAME[c]}</label><input id="f-${c}" inputmode="decimal" data-k="${c}" ${inVal(r.cur[c])}><div class="hint">mese scorso ${eur(r.prev[c])}</div></div>`).join('')}
+    </div>
+    ${!r.chiuso&&r.curSet.length&&manc.length?`<div class="note">Per chiudere il mese mancano: ${manc.map(c=>CNAME[c]).join(', ')}.</div>`:''}
+  </section>`;
   return h;
 }
+const cap = s=>s.charAt(0).toUpperCase()+s.slice(1);
 
 function movLine(x){
   const ct=catById(x.cat);
@@ -475,7 +511,7 @@ function monthsRange(){
 }
 function viewAnd(){
   const ks=monthsRange();
-  const data=ks.map(k=>{const r=calc(k);return {k,vere:r.vere,vizi:r.vizi,sti:r.m.stipendio,av:r.avanzo,ent:r.entrate}});
+  const data=ks.map(k=>{const r=calc(k);return {k,vere:r.totale,chiuso:r.chiuso,vizi:r.vizi,sti:r.m.stipendio,av:r.avanzo,ent:r.entrate}});
   const max=Math.max(1,...data.map(d=>Math.max(d.vere||0,d.sti||0)));
   const W=340,H=200,pb=22,pt=8,bw=Math.min(24,(W-10)/ks.length*0.6),step=(W-10)/ks.length;
   const y=v=>pt+(H-pb-pt)*(1-v/max);
@@ -483,7 +519,7 @@ function viewAnd(){
   data.forEach((d,i)=>{
     const cx=5+step*i+step/2;
     if(isNum(d.vere)&&d.vere>0){
-      bars+=`<rect x="${cx-bw/2}" y="${y(d.vere)}" width="${bw}" height="${H-pb-y(d.vere)}" rx="3" fill="var(--accent)"/>`;
+      bars+=`<rect x="${cx-bw/2}" y="${y(d.vere)}" width="${bw}" height="${H-pb-y(d.vere)}" rx="3" fill="var(--accent)" ${d.chiuso?'':'opacity=".4"'}/>`;
       const vz=Math.min(d.vizi,d.vere);
       if(vz>0) bars+=`<rect x="${cx-bw/2}" y="${y(vz)}" width="${bw}" height="${H-pb-y(vz)}" rx="3" fill="var(--vizi)"/>`;
     }
@@ -492,10 +528,10 @@ function viewAnd(){
     bars+=`<rect x="${cx-step/2}" y="0" width="${step}" height="${H}" fill="transparent" data-go="${d.k}" style="cursor:pointer"/>`;
   });
   const curP=periodOf(today());
-  const valid=data.filter(d=>isNum(d.vere)&&d.k<curP);
+  const valid=data.filter(d=>isNum(d.vere)&&d.chiuso&&d.k<curP);
   const media = valid.length? valid.reduce((a,d)=>a+d.vere,0)/valid.length : null;
   const mediaV = valid.length? valid.reduce((a,d)=>a+d.vizi,0)/valid.length : null;
-  const validA=data.filter(d=>isNum(d.av)&&d.k<curP);
+  const validA=data.filter(d=>isNum(d.av)&&d.chiuso&&d.k<curP);
   const mediaA = validA.length? validA.reduce((a,d)=>a+d.av,0)/validA.length : null;
   return `<section class="blk"><h2>Ultimi mesi</h2>
     <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Spese mensili, vizi e stipendio">${bars}</svg>
@@ -504,15 +540,15 @@ function viewAnd(){
       <span class="k"><span class="dot" style="background:var(--vizi)"></span>di cui vizi</span>
       <span class="k"><span style="width:14px;height:3px;background:var(--ink);border-radius:2px;display:inline-block"></span>stipendio</span>
     </div>
-    <div class="note">Tocca un mese per aprirlo.</div>
+    <div class="note">Le barre chiare sono mesi non ancora chiusi. Tocca un mese per aprirlo.</div>
   </section>
-  <section class="blk"><h2>Medie dei mesi conclusi</h2>${valid.length?'':'<div class="note" style="margin:0 0 6px">Compariranno alla fine del primo mese completo.</div>'}
+  <section class="blk"><h2>Medie dei mesi chiusi</h2>${valid.length?'':'<div class="note" style="margin:0 0 6px">Compariranno dopo la chiusura del primo mese.</div>'}
     <div class="row"><span class="n">Spese al mese</span><span class="a">${eur(media)}</span></div>
     <div class="row"><span class="n">Vizi al mese</span><span class="a">${eur(mediaV)}</span></div>
     <div class="row"><span class="n">Avanzo al mese</span><span class="a">${eur(mediaA)}</span></div>
   </section>
   <section class="blk"><h2>Mese per mese</h2>
-    ${[...data].reverse().map(d=>`<div class="row" data-go="${d.k}" style="cursor:pointer"><span class="n"><span style="text-transform:capitalize">${mLabel(d.k)}<span class="sub">${pRange(d.k)?pRange(d.k)+'<br>':''}vizi ${eur(d.vizi)}${d.ent?' · entrate +'+eur(d.ent):''}${isNum(d.av)?(d.av>=0?' · avanzo ':' · in rosso ')+eur(Math.abs(d.av)):''}</span></span></span><span class="a ${isNum(d.vere)?'':'na'}">${isNum(d.vere)?eur(d.vere):'nessun dato'}</span></div>`).join('')}
+    ${[...data].reverse().map(d=>`<div class="row" data-go="${d.k}" style="cursor:pointer"><span class="n"><span style="text-transform:capitalize">${mLabel(d.k)}<span class="sub">${pRange(d.k)?pRange(d.k)+'<br>':''}${isNum(d.vere)&&!d.chiuso?'non chiuso · ':''}vizi ${eur(d.vizi)}${d.ent?' · entrate +'+eur(d.ent):''}${isNum(d.av)?(d.av>=0?' · avanzo ':' · in rosso ')+eur(Math.abs(d.av)):''}</span></span></span><span class="a ${isNum(d.vere)?'':'na'}">${isNum(d.vere)?eur(d.vere):'nessun dato'}</span></div>`).join('')}
   </section>`;
 }
 
@@ -529,6 +565,7 @@ function bindMain(){
       const v=parseNum(inp.value);
       if(inp.dataset.k==='stipendio') m.stipendio=v; else m.saldi[inp.dataset.k]=v;
       saveMonth(S.cur,m);
+      deferRender=true; setTimeout(()=>{if(deferRender)render()},0);
     };
     inp.onkeydown=e=>{if(e.key==='Enter')inp.blur()};
     inp.onblur=()=>setTimeout(()=>{if(deferRender)render()},0);
@@ -679,8 +716,8 @@ async function exportCsv(kind){
       rows.push([x.data,TNAME[x.tipo],x.da?CNAME[x.da]:'',CNAME[x.conto],c?c.nome:'',c?(c.vizio?'Sì':'No'):'',x.desc,n(x.importo)]);
     }));
   }else{
-    rows=[['Mese','Periodo','Stipendio','Entrate extra','Spese vere','Di cui vizi','Avanzo',...CONTI.map(c=>'Spese '+c.n),'Rimborsi ricevuti',...SALDO.map(c=>'Saldo '+CNAME[c])]];
-    monthsRange().forEach(k=>{const r=calc(k);rows.push([k,pRange(k)||'mese di calendario',n(r.m.stipendio),n(r.entrate),n(r.vere),n(r.vizi),n(r.avanzo),...CONTI.map(c=>n(r.canali[c.k])),n(r.rimborsi),...SALDO.map(c=>n(r.cur[c]))])});
+    rows=[['Mese','Periodo','Chiuso','Stipendio','Entrate extra','Spese vere (saldi)','Spese registrate','Non registrate','Di cui vizi','Avanzo',...CONTI.map(c=>'Spese '+c.n),'Rimborsi ricevuti',...SALDO.map(c=>'Saldo '+CNAME[c])]];
+    monthsRange().forEach(k=>{const r=calc(k);rows.push([k,pRange(k)||'mese di calendario',r.chiuso?'Sì':'No',n(r.m.stipendio),n(r.entrate),n(r.vere),n(r.registrate),n(r.nonReg),n(r.vizi),n(r.avanzo),...CONTI.map(c=>n(r.canali[c.k])),n(r.rimborsi),...SALDO.map(c=>n(r.cur[c]))])});
   }
   const csv='\ufeff'+rows.map(r=>r.map(q).join(';')).join('\r\n');
   await shareFile(`spese-${kind}-${today()}.csv`,csv,'text/csv');
