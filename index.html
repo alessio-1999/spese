@@ -141,8 +141,8 @@ nav.tabs{
 .amount span{font-size:30px;font-weight:700;color:var(--muted)}
 .amount input{border:0;background:transparent;font-size:38px;font-weight:800;width:100%;padding:4px 0;outline:none}
 .amount:focus-within{border-color:var(--accent)}
-.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;background:var(--track);border-radius:12px;padding:3px;margin-bottom:14px}
-.seg button{border:0;background:transparent;padding:9px 1px;border-radius:9px;font-weight:600;font-size:13px}
+.seg{display:grid;grid-template-columns:repeat(2,1fr);gap:2px;background:var(--track);border-radius:12px;padding:3px;margin-bottom:14px}
+.seg button{border:0;background:transparent;padding:9px 2px;border-radius:9px;font-weight:600;font-size:14.5px}
 .seg button[aria-pressed="true"]{background:var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.12)}
 .grp{margin-bottom:14px}
 .grp>label,.grp>.gl{display:block;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:6px}
@@ -174,6 +174,7 @@ nav.tabs{
     <div class="mlabel" id="mlabel"></div>
     <button class="iconbtn" id="nextM" aria-label="Mese successivo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
   </div>
+  <button class="iconbtn" id="eyeB" aria-label="Nascondi gli importi" aria-pressed="false"></button>
   <button class="iconbtn" id="openSet" aria-label="Impostazioni"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68 1.65 1.65 0 0 0 10 3.17V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
 </header>
 
@@ -201,9 +202,17 @@ const CONTI = [
   {k:'C',   n:'Contanti'},
 ];
 const CNAME = Object.fromEntries(CONTI.map(c=>[c.k,c.n]));
-const SALDO = ['PPay','PP','R','C'];
-const TIPI = [{k:'spesa',n:'Spesa'},{k:'ricarica',n:'Ricarica'},{k:'prelievo',n:'Prelievo'},{k:'rimborso',n:'Rimborso'},{k:'entrata',n:'Entrata'},{k:'giroconto',n:'Giroconto'}];
-const TNAME = Object.assign({rientro:'Rimborso'},Object.fromEntries(TIPI.map(t=>[t.k,t.n])));
+const SALDO = ['ISP','PPay','PP','R','C'];
+const TIPI = [{k:'spesa',n:'Spesa'},{k:'trasferimento',n:'Trasferimento'},{k:'rimborso',n:'Rimborso'},{k:'entrata',n:'Entrata'}];
+const TNAME = Object.fromEntries(TIPI.map(t=>[t.k,t.n]));
+// converte i movimenti delle versioni precedenti (ricarica, prelievo, giroconto, rientro)
+function normMov(x){
+  if(x.tipo==='rientro') x.tipo='rimborso';
+  if(x.tipo==='ricarica'||x.tipo==='giroconto'){x.tipo='trasferimento';x.da=x.da||'ISP'}
+  if(x.tipo==='prelievo'){x.tipo='trasferimento';x.da=x.da||'ISP';x.conto='C'}
+  return x;
+}
+function migrate(){Object.values(S.months).forEach(m=>(m.movimenti||[]).forEach(normMov))}
 const DEF_CATS = [
   ['acquisti','Acquisti e shopping',true],['cene','Cene fuori',true],['abbonamenti','Abbonamenti',true],
   ['uscite','Uscite e caselli',true],['benzina','Benzina',true],['hobby','Hobby',true],
@@ -216,7 +225,7 @@ const DEF_CATS = [
 const $ = s=>document.querySelector(s);
 const isNum = v=>typeof v==='number' && isFinite(v);
 const EUR = new Intl.NumberFormat('it-IT',{style:'currency',currency:'EUR'});
-const eur = v=>isNum(v)?EUR.format(v):'—';
+const eur = v=>!isNum(v)?'—':S.hide?'•••• €':EUR.format(v);
 const esc = s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pad = n=>String(n).padStart(2,'0');
 const today = ()=>{const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())};
@@ -246,7 +255,7 @@ const uid = ()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),2600)}
 
 /* ---------- stato ---------- */
-const S = { mode:'local', settings:null, months:{}, lastBackup:null, cur:null, view:'mese' };
+const S = { mode:'local', settings:null, months:{}, lastBackup:null, cur:null, view:'mese', hide:false };
 const KEY='spese-v1';
 let deferRender = false;
 
@@ -269,8 +278,13 @@ function loadAll(){
     if(raw){const d=JSON.parse(raw);S.settings=d.settings||null;S.months=d.months||{};S.lastBackup=d.lastBackup||null}
   }catch(e){toast('Impossibile leggere i dati salvati')}
 }
+const EYE_OPEN='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 19c-7 0-11-7-11-7a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg>';
+function drawEye(){const b=$('#eyeB');b.innerHTML=S.hide?EYE_OFF:EYE_OPEN;b.setAttribute('aria-pressed',String(S.hide));b.setAttribute('aria-label',S.hide?'Mostra gli importi':'Nascondi gli importi')}
 function init(){
-  loadAll(); S.cur=periodOf(today()); render();
+  loadAll(); migrate();
+  try{S.hide=localStorage.getItem('spese-hide')==='1'}catch(e){}
+  drawEye(); S.cur=periodOf(today()); render();
   if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().catch(()=>{});
   if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
@@ -297,7 +311,7 @@ function restoreFrom(file, done){
     try{
       const d=JSON.parse(r.result);
       if(d.app!=='spese'||typeof d.months!=='object') throw 0;
-      S.settings=d.settings||null;S.months=d.months||{};S.lastBackup=today();saveAll();
+      S.settings=d.settings||null;S.months=d.months||{};migrate();S.lastBackup=today();saveAll();
       toast('Dati ripristinati');done&&done();render();
     }catch(e){toast('Questo file non è un backup valido')}
   };
@@ -306,38 +320,36 @@ function restoreFrom(file, done){
 function daysSince(d){if(!d)return Infinity;const[y,m,g]=d.split('-').map(Number);return Math.floor((Date.now()-new Date(y,m-1,g))/864e5)}
 
 /* ---------- calcoli ---------- */
+// Per ogni conto con saldo: spese = saldo mese scorso + soldi arrivati − trasferimenti in uscita − saldo attuale.
+// Soldi arrivati = stipendio (solo Intesa) + rimborsi + entrate + trasferimenti in arrivo.
+// Se manca un saldo (o per ChiantiBanca) si contano le spese registrate voce per voce.
+// Spese vere = somma dei conti − rimborsi ricevuti.
 function calc(k){
   const m=getMonth(k), st=settings();
   const prev = (st.start && k===st.start) ? (st.partenza||{}) : (S.months[addM(k,-1)]?.saldi||{});
   const cur = m.saldi||{};
   const mv = m.movimenti||[];
   const sum = f=>mv.filter(f).reduce((a,x)=>a+x.importo,0);
-  const ric = c=>sum(x=>x.tipo==='ricarica'&&x.conto===c);
-  const isRim = x=>x.tipo==='rimborso'||x.tipo==='rientro';
-  const rim = c=>sum(x=>isRim(x)&&x.conto===c);
-  const ent = c=>sum(x=>x.tipo==='entrata'&&x.conto===c);
-  const arr = c=>rim(c)+ent(c);
-  const prel = sum(x=>x.tipo==='prelievo');
-  const ch = (c,extra)=> (isNum(prev[c])&&isNum(cur[c])) ? prev[c]+extra-cur[c] : null;
-  const canali = {
-    PPay: ch('PPay', ric('PPay')+arr('PPay')),
-    PP:   ch('PP',   arr('PP')),
-    R:    ch('R',    ric('R')+arr('R')),
-    C:    ch('C',    prel+arr('C')),
-  };
-  const isp = sum(x=>x.tipo==='spesa'&&x.conto==='ISP');
-  const cb  = sum(x=>x.tipo==='spesa'&&x.conto==='CB');
-  const rimborsi = sum(isRim);
-  const somCan = Object.values(canali).reduce((a,v)=>a+(isNum(v)?v:0),0);
-  const any = Object.values(canali).some(isNum) || mv.length>0;
-  const vere = any ? isp+cb+somCan-rimborsi : null;
+  const inT = c=>sum(x=>x.tipo==='trasferimento'&&x.conto===c);
+  const outT = c=>sum(x=>x.tipo==='trasferimento'&&x.da===c);
+  const reg = c=>sum(x=>x.tipo==='spesa'&&x.conto===c);
+  const stip = isNum(m.stipendio)?m.stipendio:0;
+  const inflow = c=>(c==='ISP'?stip:0)+sum(x=>(x.tipo==='rimborso'||x.tipo==='entrata')&&x.conto===c)+inT(c);
+  const canali={}, modo={};
+  CONTI.forEach(({k:c})=>{
+    if(SALDO.includes(c)&&isNum(prev[c])&&isNum(cur[c])){canali[c]=prev[c]+inflow(c)-outT(c)-cur[c];modo[c]='saldo'}
+    else {canali[c]=reg(c);modo[c]='reg'}
+  });
+  const rimborsi = sum(x=>x.tipo==='rimborso');
+  const any = mv.length>0 || Object.values(modo).includes('saldo');
+  const vere = any ? Object.values(canali).reduce((a,v)=>a+v,0)-rimborsi : null;
   const perCat={};
   mv.filter(x=>x.tipo==='spesa').forEach(x=>{const c=x.cat||'_';perCat[c]=(perCat[c]||0)+x.importo});
   const vizi = Object.entries(perCat).reduce((a,[c,v])=>a+(catById(c)?.vizio?v:0),0);
-  const mancanti = SALDO.filter(c=>!isNum(canali[c]));
+  const mancanti = SALDO.filter(c=>modo[c]!=='saldo');
   const entrate = sum(x=>x.tipo==='entrata');
-  const avanzo = ((isNum(m.stipendio)||entrate>0)&&isNum(vere)) ? (m.stipendio||0)+entrate-vere : null;
-  return {m,prev,cur,canali,isp,cb,rimborsi,entrate,vere,vizi,perCat,mancanti,avanzo,prel,ric,arr};
+  const avanzo = ((isNum(m.stipendio)||entrate>0)&&isNum(vere)) ? stip+entrate-vere : null;
+  return {m,prev,cur,canali,modo,inflow,outT,reg,rimborsi,entrate,vere,vizi,perCat,mancanti,avanzo};
 }
 
 /* ---------- render ---------- */
@@ -358,6 +370,7 @@ function render(){
   bindMain();
 }
 
+const inVal = v=>S.hide ? `value="${isNum(v)?'••••':''}" placeholder="••••" readonly data-hidden="1"` : `value="${fmtIn(v)}" placeholder="0,00"`;
 function viewMese(){
   const st=settings(), r=calc(S.cur), m=r.m;
   let h='';
@@ -381,7 +394,8 @@ function viewMese(){
       <div><span class="k"><span class="dot" style="background:var(--vizi)"></span>di cui vizi</span><b>${eur(r.vizi)}${pct}</b></div>
       <div style="text-align:right"><span class="k" style="justify-content:flex-end">${isNum(r.avanzo)&&r.avanzo<0?'Mese in rosso di':'Avanzo del mese'}</span><b class="${isNum(r.avanzo)&&r.avanzo<0?'a neg':''}">${isNum(r.avanzo)?eur(Math.abs(r.avanzo)):'—'}</b></div>
     </div>
-    ${r.mancanti.length&&st.start?`<div class="note">Mancano i saldi di ${r.mancanti.map(c=>CNAME[c]).join(', ')}: il totale non li comprende ancora.</div>`:''}
+    ${r.mancanti.length&&st.start?`<div class="note">Mancano i saldi di ${r.mancanti.map(c=>CNAME[c]).join(', ')}: per ${r.mancanti.length>1?'questi conti':'questo conto'} conto solo le spese registrate.</div>`:''}
+    ${r.modo.ISP==='saldo'&&!isNum(m.stipendio)?`<div class="note">Inserisci lo stipendio: senza, le spese di Intesa risultano più basse del reale.</div>`:''}
   </div>`;
 
   // bilancio
@@ -396,23 +410,24 @@ function viewMese(){
 
   // stipendio e saldi
   h+=`<section class="blk"><h2>Stipendio e saldi attuali</h2><div class="fields">
-    <div class="field"><label for="f-stip">Stipendio</label><input id="f-stip" inputmode="decimal" data-k="stipendio" value="${fmtIn(m.stipendio)}" placeholder="0,00"></div>
+    <div class="field"><label for="f-stip">Stipendio</label><input id="f-stip" inputmode="decimal" data-k="stipendio" ${inVal(m.stipendio)}></div>
     <div class="field"><label for="f-ini">Il mese inizia il</label><input id="f-ini" type="date" value="${pStart(S.cur)}" min="${S.cur}-01" max="${S.cur}-${pad(new Date(+S.cur.slice(0,4),+S.cur.slice(5,7),0).getDate())}"><div class="hint">giorno dello stipendio</div></div>
-    ${SALDO.map(c=>`<div class="field"><label for="f-${c}">${c==='C'?'Contanti rimasti':'Saldo '+CNAME[c]}</label><input id="f-${c}" inputmode="decimal" data-k="${c}" value="${fmtIn(r.cur[c])}" placeholder="0,00"><div class="hint">mese scorso ${eur(r.prev[c])}</div></div>`).join('')}
+    ${SALDO.map(c=>`<div class="field"><label for="f-${c}">${c==='C'?'Contanti rimasti':'Saldo '+CNAME[c]}</label><input id="f-${c}" inputmode="decimal" data-k="${c}" ${inVal(r.cur[c])}><div class="hint">mese scorso ${eur(r.prev[c])}</div></div>`).join('')}
   </div></section>`;
 
   // spese per canale
   const rowA=(n,v,sub)=>{
-    const warn = isNum(v)&&v<-0.004 ? '<span class="sub" style="color:var(--neg)">Negativo: forse manca un\'entrata, un rimborso o un prelievo da registrare</span>' : '';
+    const warn = isNum(v)&&v<-0.004 ? '<span class="sub" style="color:var(--neg)">Negativo: forse manca da registrare un trasferimento in arrivo, un rimborso o un\'entrata</span>' : '';
     return `<div class="row"><span class="n"><span>${n}${sub?`<span class="sub">${sub}</span>`:''}${warn}</span></span><span class="a ${isNum(v)?'':'na'}">${isNum(v)?eur(v):'manca il saldo'}</span></div>`;
   };
+  const rowsC = CONTI.filter(({k:c})=> c!=='CB' || r.canali.CB || r.inflow('CB') || r.outT('CB')).map(({k:c,n})=>{
+    const sub = r.modo[c]==='saldo'
+      ? 'arrivati '+eur(r.inflow(c))+' · trasferiti fuori '+eur(r.outT(c))
+      : (SALDO.includes(c)?'manca il saldo: solo spese registrate':'spese registrate voce per voce');
+    return rowA(n, r.canali[c], sub);
+  }).join('');
   h+=`<section class="blk"><h2>Spese per canale</h2>
-    ${rowA('Intesa Sanpaolo',r.isp,'carta e bancomat registrati')}
-    ${r.cb?rowA('ChiantiBanca',r.cb,'carta e bancomat registrati'):''}
-    ${rowA('PostePay',r.canali.PPay,'ricariche '+eur(r.ric('PPay'))+', soldi arrivati '+eur(r.arr('PPay')))}
-    ${rowA('PayPal',r.canali.PP,'soldi arrivati '+eur(r.arr('PP')))}
-    ${rowA('Revolut',r.canali.R,'ricariche '+eur(r.ric('R'))+', soldi arrivati '+eur(r.arr('R')))}
-    ${rowA('Contanti',r.canali.C,'prelievi '+eur(r.prel)+', soldi arrivati '+eur(r.arr('C')))}
+    ${rowsC}
     ${r.rimborsi?`<div class="row"><span class="n"><span>Rimborsi ricevuti<span class="sub">su qualsiasi conto, si sottraggono</span></span></span><span class="a pos">−${eur(r.rimborsi)}</span></div>`:''}
     <div class="row tot"><span class="n"><b>Totale</b></span><span class="a">${eur(r.vere)}</span></div>
   </section>`;
@@ -430,12 +445,10 @@ function movLine(x){
   const ct=catById(x.cat);
   const title = x.desc || (x.tipo==='spesa' ? (ct?ct.nome:'Spesa') : TNAME[x.tipo]);
   const sub = x.tipo==='spesa' ? `${CNAME[x.conto]}${ct&&x.desc?' · '+esc(ct.nome):''}`
-            : x.tipo==='ricarica' ? `Ricarica ${CNAME[x.conto]}`
-            : x.tipo==='prelievo' ? 'Prelievo contanti'
-            : x.tipo==='giroconto' ? `Giroconto verso ${CNAME[x.conto]}`
+            : x.tipo==='trasferimento' ? `${CNAME[x.da]} → ${CNAME[x.conto]}`
             : x.tipo==='entrata' ? `Entrata su ${CNAME[x.conto]}`
             : `Rimborso su ${CNAME[x.conto]}`;
-  const inc = ['rimborso','rientro','entrata'].includes(x.tipo);
+  const inc = ['rimborso','entrata'].includes(x.tipo);
   const cls = x.tipo==='spesa'?'neg':inc?'pos':'';
   const sign = x.tipo==='spesa'?'−':inc?'+':'';
   return `<button class="mov" data-edit="${x.id}"><span class="t"><b>${esc(title)}</b><span>${sub}</span></span><span class="a ${cls}">${sign}${eur(x.importo)}</span></button>`;
@@ -509,7 +522,8 @@ function bindMain(){
   main.querySelectorAll('[data-act="backup"]').forEach(b=>b.onclick=doBackup);
   main.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>openMov(b.dataset.edit));
   main.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{S.cur=b.dataset.go;S.view='mese';render();scrollTo(0,0)});
-  main.querySelectorAll('input[data-k]').forEach(inp=>{
+  main.querySelectorAll('input[data-hidden]').forEach(inp=>inp.onclick=()=>toast('Tocca l\'occhio in alto per vedere e modificare gli importi'));
+  main.querySelectorAll('input[data-k]:not([data-hidden])').forEach(inp=>{
     inp.onchange=()=>{
       const m=clone(getMonth(S.cur)); m.saldi=m.saldi||{}; m.movimenti=m.movimenti||[];
       const v=parseNum(inp.value);
@@ -538,31 +552,32 @@ function openMov(id){
     for(const [k,m] of Object.entries(S.months)){const x=(m.movimenti||[]).find(x=>x.id===id); if(x){found=x;fk=k;break}}
     if(!found) return;
     draft={...found, _orig:fk, _new:false, _del:false};
-    if(draft.tipo==='rientro') draft.tipo='rimborso';
+    normMov(draft);
   }else{
     const d = S.cur===periodOf(today()) ? today() : pStart(S.cur);
-    draft={id:uid(), data:d, importo:null, tipo:'spesa', conto:'ISP', cat:null, desc:'', _new:true};
+    draft={id:uid(), data:d, importo:null, tipo:'spesa', conto:'ISP', da:'ISP', cat:null, desc:'', _new:true};
   }
   renderSheet(); $('#ov').classList.add('open');
   if(!id) setTimeout(()=>$('#amt')&&$('#amt').focus(),30);
 }
-function contiFor(t){return t==='ricarica'?['PPay','R']:t==='prelievo'?[]:CONTI.map(c=>c.k)}
 function tipFor(d){
-  if(d.tipo==='spesa' && SALDO.includes(d.conto)) return `Il totale di ${CNAME[d.conto]} si calcola dai saldi: registra qui la spesa solo per darle una categoria.`;
-  if(d.tipo==='ricarica') return 'Scegli la carta ricaricata. Non registrarla anche come spesa dal conto.';
-  if(d.tipo==='prelievo') return 'Contanti prelevati, da qualsiasi conto. Non registrarli anche come spesa.';
+  if(d.tipo==='spesa' && d.conto==='CB') return 'ChiantiBanca non ha un saldo: registra qui tutte le spese fatte con questo conto.';
+  if(d.tipo==='spesa') return `Il totale di ${CNAME[d.conto]} si calcola dai saldi: registra la spesa per darle una categoria (serve per i vizi).`;
+  if(d.tipo==='trasferimento') return 'Ricariche, prelievi, giroconti: qualsiasi spostamento tra conti tuoi. Non è una spesa. Fondo pensione e investimenti invece registrali come Spesa.';
   if(d.tipo==='rimborso') return 'Soldi restituiti per una spesa pagata da te, anche su un conto diverso da quello usato: si sottraggono dalle spese del mese.';
-  if(d.tipo==='entrata') return 'Soldi regalati (compleanni, occasioni speciali): entrano nei saldi ma non riducono le spese.';
-  if(d.tipo==='giroconto') return 'Trasferimento tra conti tuoi (es. verso ChiantiBanca): non entra nei calcoli, serve solo a tenerne traccia.';
+  if(d.tipo==='entrata') return 'Soldi regalati (compleanni, occasioni speciali): non riducono le spese ma aumentano l\'avanzo del mese.';
   return '';
 }
 function renderSheet(){
-  const d=draft, cl=contiFor(d.tipo), tip=tipFor(d);
+  const d=draft, tip=tipFor(d);
+  const chipsC=(attr,sel,dis)=>CONTI.map(c=>`<button class="chip" ${attr}="${c.k}" aria-pressed="${sel===c.k}" ${dis===c.k?'disabled style="opacity:.35"':''}>${c.n}</button>`).join('');
   $('#sheet').innerHTML=`<div class="grab"></div>
     <h3>${d._new?'Nuovo movimento':'Modifica movimento'}</h3>
     <label class="amount"><span>€</span><input id="amt" inputmode="decimal" placeholder="0,00" value="${fmtIn(d.importo)}" aria-label="Importo"></label>
     <div class="seg" role="group" aria-label="Tipo">${TIPI.map(t=>`<button data-tipo="${t.k}" aria-pressed="${d.tipo===t.k}">${t.n}</button>`).join('')}</div>
-    ${cl.length?`<div class="grp"><span class="gl">${d.tipo==='ricarica'?'Carta ricaricata':(d.tipo==='rimborso'||d.tipo==='entrata')?'Dove sono arrivati':d.tipo==='giroconto'?'Verso il conto':'Pagato con'}</span><div class="chips">${cl.map(c=>`<button class="chip" data-conto="${c}" aria-pressed="${d.conto===c}">${CNAME[c]}</button>`).join('')}</div></div>`:''}
+    ${d.tipo==='trasferimento'
+      ? `<div class="grp"><span class="gl">Da</span><div class="chips">${chipsC('data-da',d.da)}</div></div><div class="grp"><span class="gl">A</span><div class="chips">${chipsC('data-conto',d.conto,d.da)}</div></div>`
+      : `<div class="grp"><span class="gl">${d.tipo==='spesa'?'Pagato con':'Dove sono arrivati'}</span><div class="chips">${chipsC('data-conto',d.conto)}</div></div>`}
     ${tip?`<div class="tip">${tip}</div>`:''}
     ${d.tipo==='spesa'?`<div class="grp"><span class="gl">Categoria</span><div class="chips">${cats().map(c=>`<button class="chip" data-cat="${c.id}" aria-pressed="${d.cat===c.id}">${c.vizio?'<span class="dot" style="background:var(--vizi)"></span>':''}${esc(c.nome)}</button>`).join('')}</div></div>`:''}
     <div class="grp"><label for="desc">Descrizione (facoltativa)</label><input class="txt" id="desc" value="${esc(d.desc)}" placeholder="es. pizzeria con Marco"></div>
@@ -573,7 +588,8 @@ function renderSheet(){
       <button class="btn" id="saveB">Salva</button>
     </div>`;
   const syncFields=()=>{d.importo=parseNum($('#amt').value);d.desc=$('#desc').value.trim();d.data=$('#dt').value||d.data};
-  $('#sheet').querySelectorAll('[data-tipo]').forEach(b=>b.onclick=()=>{syncFields();d.tipo=b.dataset.tipo;const c=contiFor(d.tipo);if(d.tipo==='prelievo')d.conto='C';else if(!c.includes(d.conto))d.conto=c[0];renderSheet()});
+  $('#sheet').querySelectorAll('[data-tipo]').forEach(b=>b.onclick=()=>{syncFields();d.tipo=b.dataset.tipo;if(d.tipo==='trasferimento'){d.da=d.da||'ISP';if(d.conto===d.da)d.conto=d.da==='ISP'?'R':'ISP'}renderSheet()});
+  $('#sheet').querySelectorAll('[data-da]').forEach(b=>b.onclick=()=>{syncFields();d.da=b.dataset.da;if(d.conto===d.da)d.conto=d.da==='ISP'?'R':'ISP';renderSheet()});
   $('#sheet').querySelectorAll('[data-conto]').forEach(b=>b.onclick=()=>{syncFields();d.conto=b.dataset.conto;renderSheet()});
   $('#sheet').querySelectorAll('[data-cat]').forEach(b=>b.onclick=()=>{syncFields();d.cat=d.cat===b.dataset.cat?null:b.dataset.cat;renderSheet()});
   $('#cancB').onclick=closeSheet;
@@ -585,7 +601,9 @@ function saveDraft(){
   const d=draft;
   if(!isNum(d.importo)||d.importo<=0){toast('Inserisci un importo maggiore di zero');$('#amt').focus();return}
   if(!/^\d{4}-\d{2}-\d{2}$/.test(d.data)){toast('Inserisci una data valida');return}
-  const rec={id:d.id,data:d.data,importo:d.importo,tipo:d.tipo,conto:d.tipo==='prelievo'?'C':d.conto,cat:d.tipo==='spesa'?d.cat:null,desc:d.desc,ts:d.ts||Date.now()};
+  if(d.tipo==='trasferimento'&&d.da===d.conto){toast('Scegli due conti diversi');return}
+  const rec={id:d.id,data:d.data,importo:d.importo,tipo:d.tipo,conto:d.conto,cat:d.tipo==='spesa'?d.cat:null,desc:d.desc,ts:d.ts||Date.now()};
+  if(d.tipo==='trasferimento') rec.da=d.da;
   const nk=periodOf(rec.data);
   if(!d._new && d._orig!==nk) removeMov(d._orig,rec.id);
   const m=clone(getMonth(nk)); m.saldi=m.saldi||{}; m.movimenti=(m.movimenti||[]).filter(x=>x.id!==rec.id); m.movimenti.push(rec);
@@ -655,14 +673,14 @@ async function exportCsv(kind){
   const q=s=>'"'+String(s??'').replace(/"/g,'""')+'"';
   let rows;
   if(kind==='movimenti'){
-    rows=[['Data','Tipo','Conto','Categoria','Vizio','Descrizione','Importo']];
+    rows=[['Data','Tipo','Da','Conto','Categoria','Vizio','Descrizione','Importo']];
     Object.keys(S.months).sort().forEach(k=>(S.months[k].movimenti||[]).slice().sort((a,b)=>a.data.localeCompare(b.data)).forEach(x=>{
       const c=catById(x.cat);
-      rows.push([x.data,TNAME[x.tipo],CNAME[x.conto],c?c.nome:'',c?(c.vizio?'Sì':'No'):'',x.desc,n(x.importo)]);
+      rows.push([x.data,TNAME[x.tipo],x.da?CNAME[x.da]:'',CNAME[x.conto],c?c.nome:'',c?(c.vizio?'Sì':'No'):'',x.desc,n(x.importo)]);
     }));
   }else{
-    rows=[['Mese','Periodo','Stipendio','Entrate extra','Spese vere','Di cui vizi','Avanzo','Intesa','ChiantiBanca','PostePay','PayPal','Revolut','Contanti','Rimborsi ricevuti','Saldo PostePay','Saldo PayPal','Saldo Revolut','Contanti rimasti']];
-    monthsRange().forEach(k=>{const r=calc(k);rows.push([k,pRange(k)||'mese di calendario',n(r.m.stipendio),n(r.entrate),n(r.vere),n(r.vizi),n(r.avanzo),n(r.isp),n(r.cb),n(r.canali.PPay),n(r.canali.PP),n(r.canali.R),n(r.canali.C),n(r.rimborsi),n(r.cur.PPay),n(r.cur.PP),n(r.cur.R),n(r.cur.C)])});
+    rows=[['Mese','Periodo','Stipendio','Entrate extra','Spese vere','Di cui vizi','Avanzo',...CONTI.map(c=>'Spese '+c.n),'Rimborsi ricevuti',...SALDO.map(c=>'Saldo '+CNAME[c])]];
+    monthsRange().forEach(k=>{const r=calc(k);rows.push([k,pRange(k)||'mese di calendario',n(r.m.stipendio),n(r.entrate),n(r.vere),n(r.vizi),n(r.avanzo),...CONTI.map(c=>n(r.canali[c.k])),n(r.rimborsi),...SALDO.map(c=>n(r.cur[c]))])});
   }
   const csv='\ufeff'+rows.map(r=>r.map(q).join(';')).join('\r\n');
   await shareFile(`spese-${kind}-${today()}.csv`,csv,'text/csv');
@@ -672,6 +690,7 @@ async function exportCsv(kind){
 $('#prevM').onclick=()=>{S.cur=addM(S.cur,-1);render()};
 $('#nextM').onclick=()=>{S.cur=addM(S.cur,1);render()};
 $('#openSet').onclick=openSettings;
+$('#eyeB').onclick=()=>{S.hide=!S.hide;try{localStorage.setItem('spese-hide',S.hide?'1':'0')}catch(e){}drawEye();deferRender=false;if(document.activeElement)document.activeElement.blur();render()};
 $('#addBtn').onclick=()=>openMov(null);
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{S.view=t.dataset.v;render();scrollTo(0,0)});
 init();
